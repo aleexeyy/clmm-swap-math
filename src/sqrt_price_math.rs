@@ -28,16 +28,16 @@ pub fn get_next_sqrt_price_from_amount_0_rounding_up(
                     .map_err(Error::from);
             }
         }
-        return Ok(div_rounding_up(
+        Ok(div_rounding_up(
             numerator1,
             (numerator1 / sqrt_p_x96) + amount,
-        ));
+        ))
     } else {
         if product / amount != sqrt_p_x96 || numerator1 <= product {
             return Err(StateError::InsufficientReserves.into());
         }
         let denominator = numerator1 - product;
-        return mul_div_rounding_up(numerator1, sqrt_p_x96, denominator).map_err(Error::from);
+        mul_div_rounding_up(numerator1, sqrt_p_x96, denominator).map_err(Error::from)
     }
 }
 
@@ -57,9 +57,9 @@ pub fn get_next_sqrt_price_from_amount_1_rounding_down(
 
         let result = sqrt_p_x96 + quotient;
         if result <= U160_MAX {
-            return Ok(result);
+            Ok(result)
         } else {
-            return Err(MathError::Overflow.into());
+            Err(MathError::Overflow.into())
         }
     } else {
         let quotient: U256 = if amount <= U160_MAX {
@@ -74,9 +74,9 @@ pub fn get_next_sqrt_price_from_amount_1_rounding_down(
         let result = sqrt_p_x96 - quotient;
 
         if result <= U160_MAX {
-            return Ok(result);
+            Ok(result)
         } else {
-            return Err(MathError::Overflow.into());
+            Err(MathError::Overflow.into())
         }
     }
 }
@@ -98,14 +98,14 @@ pub fn get_amount_0_delta_base(
     let numerator1 = U256::from(liquidity) << RESOLUTION;
     let numerator2 = sqrt_ratio_b_x96 - sqrt_ratio_a_x96;
 
-    return if round_up {
+    if round_up {
         Ok(div_rounding_up(
             mul_div_rounding_up(numerator1, numerator2, sqrt_ratio_b_x96)?,
             sqrt_ratio_a_x96,
         ))
     } else {
         Ok(mul_div(numerator1, numerator2, sqrt_ratio_b_x96)? / sqrt_ratio_a_x96)
-    };
+    }
 }
 
 pub fn get_amount_1_delta_base(
@@ -119,11 +119,11 @@ pub fn get_amount_1_delta_base(
     };
     let liquidity = U256::from(liquidity);
 
-    return if round_up {
+    if round_up {
         mul_div_rounding_up(liquidity, sqrt_ratio_b_x96 - sqrt_ratio_a_x96, Q96)
     } else {
         mul_div(liquidity, sqrt_ratio_b_x96 - sqrt_ratio_a_x96, Q96)
-    };
+    }
 }
 
 pub fn get_amount_0_delta(
@@ -131,7 +131,7 @@ pub fn get_amount_0_delta(
     sqrt_ratio_b_x96: U256,
     liquidity: i128,
 ) -> Result<I256, Error> {
-    return if liquidity < 0 {
+    if liquidity < 0 {
         Ok(-I256::from_raw(get_amount_0_delta_base(
             sqrt_ratio_a_x96,
             sqrt_ratio_b_x96,
@@ -145,7 +145,7 @@ pub fn get_amount_0_delta(
             liquidity as u128,
             true,
         )?))
-    };
+    }
 }
 
 pub fn get_amount_1_delta(
@@ -153,7 +153,7 @@ pub fn get_amount_1_delta(
     sqrt_ratio_b_x96: U256,
     liquidity: i128,
 ) -> Result<I256, MathError> {
-    return if liquidity < 0 {
+    if liquidity < 0 {
         Ok(-I256::from_raw(get_amount_1_delta_base(
             sqrt_ratio_a_x96,
             sqrt_ratio_b_x96,
@@ -167,7 +167,7 @@ pub fn get_amount_1_delta(
             -liquidity as u128,
             true,
         )?))
-    };
+    }
 }
 
 pub fn get_next_sqrt_price_from_input(
@@ -183,13 +183,9 @@ pub fn get_next_sqrt_price_from_input(
         return Err(StateError::LiquidityIsZero.into());
     }
 
-    return if zero_for_one {
-        get_next_sqrt_price_from_amount_0_rounding_up(sqrt_p_x96, liquidity, amount_in, true)
-            .map_err(Error::from)
-    } else {
-        get_next_sqrt_price_from_amount_1_rounding_down(sqrt_p_x96, liquidity, amount_in, true)
-            .map_err(Error::from)
-    };
+    if zero_for_one {
+        get_next_sqrt_price_from_amount_0_rounding_up(sqrt_p_x96, liquidity, amount_in, true)} else {
+        get_next_sqrt_price_from_amount_1_rounding_down(sqrt_p_x96, liquidity, amount_in, true)}
 }
 
 pub fn get_next_sqrt_price_from_output(
@@ -205,13 +201,9 @@ pub fn get_next_sqrt_price_from_output(
         return Err(StateError::LiquidityIsZero.into());
     }
 
-    return if zero_for_one {
-        get_next_sqrt_price_from_amount_1_rounding_down(sqrt_p_x96, liquidity, amount_out, false)
-            .map_err(Error::from)
-    } else {
-        get_next_sqrt_price_from_amount_0_rounding_up(sqrt_p_x96, liquidity, amount_out, false)
-            .map_err(Error::from)
-    };
+    if zero_for_one {
+        get_next_sqrt_price_from_amount_1_rounding_down(sqrt_p_x96, liquidity, amount_out, false)} else {
+        get_next_sqrt_price_from_amount_0_rounding_up(sqrt_p_x96, liquidity, amount_out, false)}
 }
 
 #[cfg(test)]

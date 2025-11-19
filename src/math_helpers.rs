@@ -52,7 +52,7 @@ pub fn mul_div(a: U256, b: U256, mut denominator: U256) -> Result<U256, MathErro
     inv *= U256::from(2u8) - denominator * inv;
     inv *= U256::from(2u8) - denominator * inv;
 
-    return Ok(prod0 * inv);
+    Ok(prod0 * inv)
 }
 
 pub fn mul_div_rounding_up(a: U256, b: U256, denominator: U256) -> Result<U256, MathError> {
@@ -64,16 +64,16 @@ pub fn mul_div_rounding_up(a: U256, b: U256, denominator: U256) -> Result<U256, 
         }
         result += U256::ONE;
     }
-    return Ok(result);
+    Ok(result)
 }
 
 // unsafe
 pub fn div_rounding_up(a: U256, b: U256) -> U256 {
     let (quotient, remainder) = a.div_rem(b);
     if remainder.is_zero() {
-        return quotient;
+        quotient
     } else {
-        return quotient + U256::ONE;
+        quotient + U256::ONE
     }
 }
 

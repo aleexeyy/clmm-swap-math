@@ -5,14 +5,14 @@ pub fn most_significant_bit(x: U256) -> Result<u8, MathError> {
     if x.is_zero() {
         return Err(MathError::ZeroValue);
     }
-    return Ok(255 - x.leading_zeros() as u8);
+    Ok(255 - x.leading_zeros() as u8)
 }
 
 pub fn least_significant_bit(x: U256) -> Result<u8, MathError> {
     if x.is_zero() {
         return Err(MathError::ZeroValue);
     }
-    return Ok(x.trailing_zeros() as u8);
+    Ok(x.trailing_zeros() as u8)
 }
 
 #[cfg(test)]

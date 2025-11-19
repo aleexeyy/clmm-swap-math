@@ -123,14 +123,14 @@ pub fn compute_swap_step(
 
     if exact_in && sqrt_ratio_next_x96 != sqrt_ratio_target_x96 {
         let fee_amount = amount_remaining.into_raw() - amount_in;
-        return Ok((sqrt_ratio_next_x96, amount_in, amount_out, fee_amount));
+        Ok((sqrt_ratio_next_x96, amount_in, amount_out, fee_amount))
     } else {
         let fee_amount = mul_div_rounding_up(
             amount_in,
             U256::from(fee_pips),
             U256::from(1000000u32 - fee_pips),
         )?;
-        return Ok((sqrt_ratio_next_x96, amount_in, amount_out, fee_amount));
+        Ok((sqrt_ratio_next_x96, amount_in, amount_out, fee_amount))
     }
 }
 
