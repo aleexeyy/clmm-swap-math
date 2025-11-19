@@ -5,9 +5,11 @@ mod error;
 mod liquidity_math;
 mod math_helpers;
 mod sqrt_price_math;
+mod swap;
 mod swap_math;
 mod tick_bitmap;
 mod tick_math;
+mod v3_pool;
 
 pub use crate::error::Error;
 

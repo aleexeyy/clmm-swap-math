@@ -34,10 +34,36 @@ pub enum StateError {
 }
 
 #[derive(Debug, Error)]
+pub enum SwapError {
+    #[error("Swap error - amountSpecified must be greater than 0")]
+    AmountSpecifiedIsZero,
+
+    #[error("Swap error - sqrt price out of bounds")]
+    SqrtPriceOutOfBounds,
+}
+#[derive(Debug, Error)]
+pub enum OnchainError {
+    #[error("Onchain error - failed to get tick spacing: {0}")]
+    FailedToGetTickSpacing(String),
+
+    #[error("Onchain error - failed to get slot0: {0}")]
+    FailedToGetSlot0(String),
+
+    #[error("Onchain error - failed to get liquidity: {0}")]
+    FailedToGetLiquidity(String),
+}
+
+#[derive(Debug, Error)]
 pub enum Error {
     #[error(transparent)]
-    MathError(#[from] crate::error::MathError),
+    MathError(#[from] MathError),
 
     #[error(transparent)]
-    StateError(#[from] crate::error::StateError),
+    StateError(#[from] StateError),
+
+    #[error(transparent)]
+    SwapError(#[from] SwapError),
+
+    #[error(transparent)]
+    OnchainError(#[from] OnchainError),
 }

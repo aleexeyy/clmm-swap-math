@@ -184,8 +184,10 @@ pub fn get_next_sqrt_price_from_input(
     }
 
     if zero_for_one {
-        get_next_sqrt_price_from_amount_0_rounding_up(sqrt_p_x96, liquidity, amount_in, true)} else {
-        get_next_sqrt_price_from_amount_1_rounding_down(sqrt_p_x96, liquidity, amount_in, true)}
+        get_next_sqrt_price_from_amount_0_rounding_up(sqrt_p_x96, liquidity, amount_in, true)
+    } else {
+        get_next_sqrt_price_from_amount_1_rounding_down(sqrt_p_x96, liquidity, amount_in, true)
+    }
 }
 
 pub fn get_next_sqrt_price_from_output(
@@ -202,8 +204,10 @@ pub fn get_next_sqrt_price_from_output(
     }
 
     if zero_for_one {
-        get_next_sqrt_price_from_amount_1_rounding_down(sqrt_p_x96, liquidity, amount_out, false)} else {
-        get_next_sqrt_price_from_amount_0_rounding_up(sqrt_p_x96, liquidity, amount_out, false)}
+        get_next_sqrt_price_from_amount_1_rounding_down(sqrt_p_x96, liquidity, amount_out, false)
+    } else {
+        get_next_sqrt_price_from_amount_0_rounding_up(sqrt_p_x96, liquidity, amount_out, false)
+    }
 }
 
 #[cfg(test)]
