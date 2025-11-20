@@ -46,5 +46,7 @@ const U256_MAX_TICK: U256 = U256::from_limbs([887272, 0, 0, 0]);
 
 const U160_MAX: U256 = U256::from_limbs([0, 0, 4294967296, 0]);
 
+const U256_10000: U256 = U256::from_limbs([10000, 0, 0, 0]);
+
 pub const RESOLUTION: u8 = 96;
 pub const Q96: U256 = U256::from_limbs([0, 4294967296, 0, 0]);

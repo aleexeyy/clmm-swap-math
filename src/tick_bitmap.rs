@@ -45,7 +45,7 @@ pub fn next_initialized_tick_within_one_word(
         let (word_pos, bit_pos) = position(compressed);
 
         let mask: U256 = (U256_1 << bit_pos) - U256_1 + (U256_1 << bit_pos);
-        let masked: U256 = get_word(&bitmap, word_pos) & mask;
+        let masked: U256 = get_word(bitmap, word_pos) & mask;
 
         let initialized = !masked.is_zero();
 
@@ -54,13 +54,13 @@ pub fn next_initialized_tick_within_one_word(
         } else {
             (compressed - bit_pos as i32) * tick_spacing
         };
-        return Ok((next, initialized));
+        Ok((next, initialized))
     } else {
         let (word_pos, bit_pos) = position(compressed + 1);
 
         let mask: U256 = ((U256_1 << bit_pos) - U256_1).bitxor(U256::MAX);
 
-        let masked: U256 = get_word(&bitmap, word_pos) & mask;
+        let masked: U256 = get_word(bitmap, word_pos) & mask;
 
         let initialized = !masked.is_zero();
 
@@ -69,7 +69,7 @@ pub fn next_initialized_tick_within_one_word(
         } else {
             (compressed + 1 + (255u8 - bit_pos) as i32) * tick_spacing
         };
-        return Ok((next, initialized));
+        Ok((next, initialized))
     }
 }
 

@@ -117,11 +117,11 @@ pub fn compute_swap_step(
         };
     }
 
-    if !exact_in && amount_out > (-amount_remaining).into_raw() {
+    if !exact_in && (amount_out > (-amount_remaining).into_raw()) {
         amount_out = (-amount_remaining).into_raw();
     }
 
-    if exact_in && sqrt_ratio_next_x96 != sqrt_ratio_target_x96 {
+    if exact_in && (sqrt_ratio_next_x96 != sqrt_ratio_target_x96) {
         let fee_amount = amount_remaining.into_raw() - amount_in;
         Ok((sqrt_ratio_next_x96, amount_in, amount_out, fee_amount))
     } else {

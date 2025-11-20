@@ -40,6 +40,9 @@ pub enum SwapError {
 
     #[error("Swap error - sqrt price out of bounds")]
     SqrtPriceOutOfBounds,
+
+    #[error("Swap error - liquidity is 0")]
+    LiquidityIsZero,
 }
 #[derive(Debug, Error)]
 pub enum OnchainError {
@@ -57,6 +60,9 @@ pub enum OnchainError {
 
     #[error("Onchain error - failed decode bitmap: {0}")]
     FailedToDecodeBitmap(String),
+
+    #[error("Onchain error - failed decode ticks: {0}")]
+    FailedToDecodeTick(String),
 }
 
 #[derive(Debug, Error)]
