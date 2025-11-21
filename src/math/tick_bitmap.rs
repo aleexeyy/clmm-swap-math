@@ -91,7 +91,6 @@ pub fn next_initialized_tick_within_one_word(
 }
 
 #[cfg(test)]
-
 mod tests {
     use super::*;
 

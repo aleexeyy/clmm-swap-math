@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use alloy_primitives::{I256, U256};
 use criterion::{BenchmarkId, Criterion, Throughput, black_box};
 use uniswap_v3_math::math::{

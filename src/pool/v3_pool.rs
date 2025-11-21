@@ -553,8 +553,7 @@ mod tests {
     pub fn mock_provider() -> Arc<impl Provider> {
         let asserter = Asserter::new();
         let provider = ProviderBuilder::new().connect_mocked_client(asserter.clone());
-        let provider = Arc::new(provider);
-        provider
+        Arc::new(provider)
     }
 
     // --- Pure helpers: address_to_u160 & sort_tokens -----------------------------

@@ -7,7 +7,6 @@ const U256_THREE: U256 = U256::from_limbs([3, 0, 0, 0]);
 
 #[inline(always)]
 const fn likely(b: bool) -> bool {
-    // Use intrinsics if available
     #[cfg(target_arch = "x86_64")]
     {
         if b { core::intrinsics::likely(b) } else { b }
