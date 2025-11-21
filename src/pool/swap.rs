@@ -1,6 +1,7 @@
 use crate::U256_10000;
 use crate::error::{Error, SwapError};
 use crate::math::liquidity_math::add_delta;
+use crate::math::math_helpers::unlikely;
 use crate::math::swap_math::compute_swap_step;
 use crate::math::tick_bitmap::next_initialized_tick_within_one_word;
 use crate::math::tick_math::{
@@ -115,24 +116,26 @@ impl<P> crate::pool::v3_pool::V3Pool<P> {
     /// locally to simulate or quote a trade.
     pub fn swap(&self, params: SwapParams) -> Result<SwapResult, Error> {
         let amount_specified = params.amount_specified;
-        if amount_specified.is_zero() {
+        if unlikely(amount_specified.is_zero()) {
             return Err(Error::SwapError(SwapError::AmountSpecifiedIsZero));
         }
-        if self.liquidity == 0 {
+        if unlikely(self.liquidity == 0) {
             return Err(Error::SwapError(SwapError::LiquidityIsZero));
         }
 
         let zero_for_one = params.zero_for_one;
         let sqrt_price_limit_x96 = params.sqrt_price_limit_x96;
         if zero_for_one {
-            if (sqrt_price_limit_x96 >= self.slot0.sqrt_price_x96)
-                || (sqrt_price_limit_x96 <= MIN_SQRT_RATIO)
-            {
+            if unlikely(
+                (sqrt_price_limit_x96 >= self.slot0.sqrt_price_x96)
+                    || (sqrt_price_limit_x96 <= MIN_SQRT_RATIO),
+            ) {
                 return Err(Error::SwapError(SwapError::SqrtPriceOutOfBounds));
             }
-        } else if (sqrt_price_limit_x96 <= self.slot0.sqrt_price_x96)
-            || (sqrt_price_limit_x96 >= MAX_SQRT_RATIO)
-        {
+        } else if unlikely(
+            (sqrt_price_limit_x96 <= self.slot0.sqrt_price_x96)
+                || (sqrt_price_limit_x96 >= MAX_SQRT_RATIO),
+        ) {
             return Err(Error::SwapError(SwapError::SqrtPriceOutOfBounds));
         }
 

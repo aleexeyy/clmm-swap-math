@@ -1,4 +1,5 @@
 use crate::error::StateError;
+use crate::math::math_helpers::unlikely;
 use crate::{U256_127, U256_128};
 use alloy_primitives::{I256, U256};
 
@@ -31,7 +32,7 @@ pub const TICK_HIGH: I256 = I256::from_raw(U256::from_limbs([
 pub fn get_sqrt_ratio_at_tick(tick: i32) -> Result<U256, StateError> {
     let abs_tick = tick.unsigned_abs();
 
-    if abs_tick > MAX_TICK as u32 {
+    if unlikely(abs_tick > MAX_TICK as u32) {
         return Err(StateError::TickOutOfBounds);
     }
 
@@ -147,7 +148,7 @@ fn compute_msb_optimized(mut r: U256) -> (u32, U256) {
 /// This is the primary implementation used by the rest of the crate
 /// and is intended to match the Solidity logic exactly.
 pub fn get_tick_at_sqrt_ratio(sqrt_price_x_96: U256) -> Result<i32, StateError> {
-    if sqrt_price_x_96 < MIN_SQRT_RATIO || sqrt_price_x_96 >= MAX_SQRT_RATIO {
+    if unlikely(sqrt_price_x_96 < MIN_SQRT_RATIO || sqrt_price_x_96 >= MAX_SQRT_RATIO) {
         return Err(StateError::SqrtPriceOutOfBounds);
     }
 

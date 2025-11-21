@@ -5,28 +5,23 @@ const U256_ONE: U256 = U256::ONE;
 const U256_TWO: U256 = U256::from_limbs([2, 0, 0, 0]);
 const U256_THREE: U256 = U256::from_limbs([3, 0, 0, 0]);
 
+/// Cheap branch-hinting wrapper for hot paths.
+///
+/// On stable this is implemented without `core::intrinsics` and
+/// simply returns the input; the annotation still gives the
+/// optimizer a mild signal that `true` is the common case.
 #[inline(always)]
-const fn likely(b: bool) -> bool {
-    #[cfg(target_arch = "x86_64")]
-    {
-        if b { core::intrinsics::likely(b) } else { b }
-    }
-    #[cfg(not(target_arch = "x86_64"))]
+pub(crate) fn likely(b: bool) -> bool {
     b
 }
 
+/// Cheap branch-hinting wrapper for cold paths (rare branches).
+///
+/// On stable this just returns the input and uses `#[cold]`
+/// to indicate that `true` is expected to be rare.
 #[inline(always)]
 #[cold]
-const fn unlikely(b: bool) -> bool {
-    #[cfg(target_arch = "x86_64")]
-    {
-        if !b {
-            core::intrinsics::unlikely(!b)
-        } else {
-            b
-        }
-    }
-    #[cfg(not(target_arch = "x86_64"))]
+pub(crate) fn unlikely(b: bool) -> bool {
     b
 }
 
@@ -37,7 +32,6 @@ const fn unlikely(b: bool) -> bool {
 /// many of the higher‑level swap and liquidity calculations.
 #[inline(always)]
 pub fn mul_div(a: U256, b: U256, mut denominator: U256) -> Result<U256, MathError> {
-    // Early exit for division by zero
     if unlikely(denominator.is_zero()) {
         return Err(MathError::DivisionByZero);
     }
@@ -98,15 +92,18 @@ pub fn mul_div(a: U256, b: U256, mut denominator: U256) -> Result<U256, MathErro
 /// would exceed `U256::MAX`.
 #[inline(always)]
 pub fn mul_div_rounding_up(a: U256, b: U256, denominator: U256) -> Result<U256, MathError> {
-    let mut result = mul_div(a, b, denominator)?;
+    let result = mul_div(a, b, denominator)?;
+    let remainder = a.mul_mod(b, denominator);
 
-    if a.mul_mod(b, denominator) > U256::ZERO {
-        if result >= U256::MAX {
-            return Err(MathError::Overflow);
-        }
-        result += U256::ONE;
+    if remainder.is_zero() {
+        return Ok(result);
     }
-    Ok(result)
+
+    if result == U256::MAX {
+        return Err(MathError::Overflow);
+    }
+
+    Ok(result + U256::ONE)
 }
 
 /// Divides `a` by `b`, rounding the result up to the next integer
@@ -117,11 +114,7 @@ pub fn mul_div_rounding_up(a: U256, b: U256, denominator: U256) -> Result<U256, 
 #[inline(always)]
 pub fn div_rounding_up(a: U256, b: U256) -> U256 {
     let (quotient, remainder) = a.div_rem(b);
-    if remainder.is_zero() {
-        quotient
-    } else {
-        quotient + U256::ONE
-    }
+    quotient + U256::from((!remainder.is_zero()) as u64)
 }
 
 #[cfg(test)]

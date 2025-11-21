@@ -1,5 +1,5 @@
 use crate::RESOLUTION;
-use crate::math::math_helpers::{div_rounding_up, mul_div, mul_div_rounding_up};
+use crate::math::math_helpers::{div_rounding_up, mul_div, mul_div_rounding_up, unlikely};
 use crate::{
     Q96, U160_MAX,
     error::{Error, MathError, StateError},
@@ -196,10 +196,10 @@ pub fn get_next_sqrt_price_from_input(
     amount_in: U256,
     zero_for_one: bool,
 ) -> Result<U256, Error> {
-    if sqrt_p_x96.is_zero() {
+    if unlikely(sqrt_p_x96.is_zero()) {
         return Err(StateError::SqrtPriceIsZero.into());
     }
-    if liquidity == 0 {
+    if unlikely(liquidity == 0) {
         return Err(StateError::LiquidityIsZero.into());
     }
 
@@ -219,10 +219,10 @@ pub fn get_next_sqrt_price_from_output(
     amount_out: U256,
     zero_for_one: bool,
 ) -> Result<U256, Error> {
-    if sqrt_p_x96.is_zero() {
+    if unlikely(sqrt_p_x96.is_zero()) {
         return Err(StateError::SqrtPriceIsZero.into());
     }
-    if liquidity == 0 {
+    if unlikely(liquidity == 0) {
         return Err(StateError::LiquidityIsZero.into());
     }
 
