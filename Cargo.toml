@@ -8,7 +8,7 @@ description = "Uniswap V3 Math written in Rust, with Swap possibility"
 readme = "README.md"
 homepage = "https://github.com/aleexeyy/rust-uniswap-v3"
 repository = "https://github.com/aleexeyy/rust-uniswap-v3"
-keywords = ["uniswapv3", "math", "swap", "ethereum", "mev", "defi", "uniswap"]
+keywords = ["uniswapv3", "math", "swap", "clmm", "defi"]
 categories = ["algorithms", "cryptography::cryptocurrencies"]
 exclude = ["target/*", ".github/*", ".gitignore"]
 
