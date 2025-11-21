@@ -1,5 +1,5 @@
 [package]
-name = "uniswap_v3_math"
+name = "clmm_swap_math"
 rust-version = "1.88"
 version = "0.1.0"
 edition = "2024"
