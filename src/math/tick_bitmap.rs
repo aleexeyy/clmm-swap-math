@@ -1,20 +1,32 @@
+use crate::FastMap;
 use crate::U256_1;
-use crate::bit_math::{least_significant_bit, most_significant_bit};
 use crate::error::MathError;
+use crate::math::bit_math::{least_significant_bit, most_significant_bit};
 use alloy_primitives::U256;
-use rustc_hash::FxHashMap;
 use std::ops::Shr;
 
+/// Computes the bitmap word index and bit position for a given tick.
+///
+/// This is a low‑level helper that maps a tick index into the
+/// `(word, bit)` coordinates used by the Uniswap V3 tick bitmap.
 pub fn position(tick: i32) -> (i16, u8) {
     (tick.shr(8) as i16, (tick % 256) as u8)
 }
 
-pub fn get_word(bitmap: &FxHashMap<i16, U256>, word: i16) -> U256 {
+/// Returns the bitmap word stored at `word`, or zero if absent.
+///
+/// Callers use this to read a 256‑bit chunk of initialized ticks
+/// from a sparse bitmap map.
+pub fn get_word(bitmap: &FastMap<i16, U256>, word: i16) -> U256 {
     *bitmap.get(&word).unwrap_or(&U256::ZERO)
 }
 
+/// Toggles (flips) the initialized status of a tick in the bitmap.
+///
+/// This enforces that `tick` is aligned to `tick_spacing`, returning
+/// `MathError::OutOfBounds` if it is not.
 pub fn flip_tick(
-    tick_bitmap: &mut FxHashMap<i16, U256>,
+    tick_bitmap: &mut FastMap<i16, U256>,
     tick: i32,
     tick_spacing: i32,
 ) -> Result<(), MathError> {
@@ -29,8 +41,13 @@ pub fn flip_tick(
     Ok(())
 }
 
+/// Searches a single 256‑bit bitmap word for the next initialized tick
+/// to the left or right of `tick`, depending on `lte`.
+///
+/// Returns the tick index of the next candidate and a flag indicating
+/// whether that tick is actually initialized.
 pub fn next_initialized_tick_within_one_word(
-    bitmap: &FxHashMap<i16, U256>,
+    bitmap: &FastMap<i16, U256>,
     tick: i32,
     tick_spacing: i32,
     lte: bool,
@@ -76,12 +93,11 @@ pub fn next_initialized_tick_within_one_word(
 #[cfg(test)]
 
 mod tests {
-
     use super::*;
 
-    pub fn init_test_ticks() -> FxHashMap<i16, U256> {
+    pub fn init_test_ticks() -> FastMap<i16, U256> {
         let ticks = vec![-200, -55, -4, 70, 78, 84, 139, 240, 535];
-        let mut bitmap = FxHashMap::default();
+        let mut bitmap = FastMap::default();
         for t in ticks {
             flip_tick(&mut bitmap, t, 1).unwrap();
         }
@@ -109,7 +125,7 @@ mod tests {
     // -----------------------------------------------------------------------------
     #[test]
     pub fn test_flip_tick_roundtrip() {
-        let mut bm = FxHashMap::default();
+        let mut bm = FastMap::default();
         flip_tick(&mut bm, 78, 1).unwrap();
         let (word, bit) = position(78);
         assert_eq!(get_word(&bm, word), U256_1 << bit);

@@ -1,12 +1,16 @@
-use super::RESOLUTION;
-use crate::math_helpers::{div_rounding_up, mul_div_rounding_up};
+use crate::RESOLUTION;
+use crate::math::math_helpers::{div_rounding_up, mul_div, mul_div_rounding_up};
 use crate::{
     Q96, U160_MAX,
     error::{Error, MathError, StateError},
-    math_helpers::mul_div,
 };
 use alloy_primitives::{I256, U256};
 
+/// Computes the next sqrt price after swapping token0, rounding the
+/// resulting price up, given current price, liquidity, amount, and
+/// whether the amount is added or removed.
+///
+/// This is the low‑level primitive used by higher‑level swap math.
 pub fn get_next_sqrt_price_from_amount_0_rounding_up(
     sqrt_p_x96: U256,
     liquidity: u128,
@@ -41,6 +45,9 @@ pub fn get_next_sqrt_price_from_amount_0_rounding_up(
     }
 }
 
+/// Computes the next sqrt price after swapping token1, rounding the
+/// resulting price down, given current price, liquidity, amount, and
+/// direction (add/remove).
 pub fn get_next_sqrt_price_from_amount_1_rounding_down(
     sqrt_p_x96: U256,
     liquidity: u128,
@@ -81,6 +88,10 @@ pub fn get_next_sqrt_price_from_amount_1_rounding_down(
     }
 }
 
+/// Core helper for computing the token0 amount delta between two
+/// sqrt prices for a given liquidity, optionally rounding up.
+///
+/// This is used by both exact‑in and exact‑out swap flows.
 pub fn get_amount_0_delta_base(
     mut sqrt_ratio_a_x96: U256,
     mut sqrt_ratio_b_x96: U256,
@@ -108,6 +119,8 @@ pub fn get_amount_0_delta_base(
     }
 }
 
+/// Core helper for computing the token1 amount delta between two
+/// sqrt prices for a given liquidity, optionally rounding up.
 pub fn get_amount_1_delta_base(
     mut sqrt_ratio_a_x96: U256,
     mut sqrt_ratio_b_x96: U256,
@@ -126,6 +139,8 @@ pub fn get_amount_1_delta_base(
     }
 }
 
+/// Public wrapper for computing the signed token0 amount delta between
+/// two sqrt prices for a signed liquidity amount.
 pub fn get_amount_0_delta(
     sqrt_ratio_a_x96: U256,
     sqrt_ratio_b_x96: U256,
@@ -148,6 +163,8 @@ pub fn get_amount_0_delta(
     }
 }
 
+/// Public wrapper for computing the signed token1 amount delta between
+/// two sqrt prices for a signed liquidity amount.
 pub fn get_amount_1_delta(
     sqrt_ratio_a_x96: U256,
     sqrt_ratio_b_x96: U256,
@@ -170,6 +187,9 @@ pub fn get_amount_1_delta(
     }
 }
 
+/// Computes the next sqrt price when swapping *into* the pool
+/// (`amount_in`), choosing the correct branch for token0/token1
+/// depending on `zero_for_one`.
 pub fn get_next_sqrt_price_from_input(
     sqrt_p_x96: U256,
     liquidity: u128,
@@ -190,6 +210,9 @@ pub fn get_next_sqrt_price_from_input(
     }
 }
 
+/// Computes the next sqrt price when swapping *out of* the pool
+/// (`amount_out`), choosing the correct branch for token0/token1
+/// depending on `zero_for_one`.
 pub fn get_next_sqrt_price_from_output(
     sqrt_p_x96: U256,
     liquidity: u128,
@@ -212,9 +235,9 @@ pub fn get_next_sqrt_price_from_output(
 
 #[cfg(test)]
 mod test {
-
     use super::*;
-    use crate::{U256_1, U256_2};
+    use crate::U256_1;
+    const U256_2: U256 = U256::from_limbs([2, 0, 0, 0]);
     use std::{
         ops::{Add, Sub},
         str::FromStr,

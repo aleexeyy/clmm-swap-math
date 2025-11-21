@@ -1,12 +1,88 @@
 [package]
 name = "uniswap_v3_math"
+rust-version = "1.88"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+description = "Uniswap V3 Math written in Rust, with Swap possibility"
+readme = "README.md"
+homepage = "https://github.com/aleexeyy/rust-uniswap-v3"
+repository = "https://github.com/aleexeyy/rust-uniswap-v3"
+keywords = ["uniswapv3", "math", "swap", "ethereum", "mev", "defi", "uniswap"]
+categories = ["algorithms", "cryptography::cryptocurrencies"]
+exclude = ["target/*", ".github/*", ".gitignore"]
+
+[package.metadata.docs.rs]
+features = ["onchain", "std-hash"]
 
 [dependencies]
-alloy-primitives = "1.4.1"
-thiserror = "2.0.17"
-rustc-hash = "2.1.1"
-alloy = "1.1.1"
-futures = "0.3.31"
+alloy-primitives = { version = "1.4.1", default-features = false }
+thiserror = { version = "2.0.17", default-features = false, features = ["std"] }
+alloy-provider = { version = "1.1.1", default-features = false, optional = true }
+alloy-contract = { version = "1.1.1", default-features = false, optional = true }
+alloy-sol-types = { version = "1.4.1", default-features = false, optional = true }
+alloy-sol-macro = { version = "1.4.1", optional = true }
+rustc-hash = { version = "2.1.1", optional = true }
+ahash = { version = "0.8", optional = true }
 
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
+lto = "fat"
+panic = "abort"
+
+[profile.bench]
+opt-level = 3
+codegen-units = 1
+lto = "thin"
+debug = true
+
+[[bench]]
+name = "math_bench"
+harness = false
+
+[[bench]]
+name = "tick_math_bench"
+harness = false
+
+[[bench]]
+name = "sqrt_price_math_bench"
+harness = false
+
+[[bench]]
+name = "swap_math_bench"
+harness = false
+
+[[bench]]
+name = "math_helpers_bench"
+harness = false
+
+[[bench]]
+name = "tick_bitmap_bench"
+harness = false
+
+[[bench]]
+name = "bit_math_bench"
+harness = false
+
+[features]
+# default build = pure math (no on-chain I/O)
+default = ["std-hash"]
+
+# enable on-chain provider / contract support
+onchain = [
+    "dep:alloy-provider",
+    "dep:alloy-contract",
+    "dep:alloy-sol-types",
+    "dep:alloy-sol-macro",
+]
+
+# internal hash-map selectors
+std-hash = []
+rustc-hash = ["dep:rustc-hash"]
+ahash = ["dep:ahash"]

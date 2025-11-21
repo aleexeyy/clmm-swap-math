@@ -1,6 +1,10 @@
 use crate::error::MathError;
 use alloy_primitives::U256;
 
+/// Returns the index (0–255) of the most significant set bit in a `U256`,
+/// or `MathError::ZeroValue` if the input is zero.
+///
+/// Useful for fast order‑of‑magnitude / log2‑like operations on large integers.
 pub fn most_significant_bit(x: U256) -> Result<u8, MathError> {
     if x.is_zero() {
         return Err(MathError::ZeroValue);
@@ -8,6 +12,11 @@ pub fn most_significant_bit(x: U256) -> Result<u8, MathError> {
     Ok(255 - x.leading_zeros() as u8)
 }
 
+/// Returns the index (0–255) of the least significant set bit in a `U256`,
+/// or `MathError::ZeroValue` if the input is zero.
+///
+/// This is typically used when scanning bitmaps from the right to find
+/// the first initialized position.
 pub fn least_significant_bit(x: U256) -> Result<u8, MathError> {
     if x.is_zero() {
         return Err(MathError::ZeroValue);

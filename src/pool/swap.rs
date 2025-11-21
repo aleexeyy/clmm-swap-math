@@ -1,20 +1,24 @@
 use crate::U256_10000;
 use crate::error::{Error, SwapError};
-use crate::swap_math::compute_swap_step;
-use crate::tick_bitmap::next_initialized_tick_within_one_word;
-use crate::tick_math::{
+use crate::math::liquidity_math::add_delta;
+use crate::math::swap_math::compute_swap_step;
+use crate::math::tick_bitmap::next_initialized_tick_within_one_word;
+use crate::math::tick_math::{
     MAX_SQRT_RATIO, MAX_TICK, MIN_SQRT_RATIO, MIN_TICK, get_sqrt_ratio_at_tick,
     get_tick_at_sqrt_ratio,
 };
-use crate::v3_pool::V3Pool;
-use alloy::providers::Provider;
 use alloy_primitives::{I256, U256};
 use std::ops::{Add, Sub};
 
+/// Computes a conservative sqrt‑price limit for a swap given the current
+/// price, swap direction, and a slippage tolerance in percent.
+///
+/// This is handy when building user‑facing APIs: you can derive a
+/// `sqrt_price_limit_x96` from a human‑friendly percentage tolerance.
 pub fn calculate_sqrt_price_limit(
     sqrt_price_x96: U256,
     zero_for_one: bool,
-    tolerance: f32,
+    tolerance: f32, // in percent
 ) -> U256 {
     let slippage_bps = tolerance * 10_000.0;
 
@@ -100,7 +104,15 @@ impl Default for StepComputations {
         }
     }
 }
-impl<P: Provider + Send + Sync + 'static> V3Pool<P> {
+
+impl<P> crate::pool::v3_pool::V3Pool<P> {
+    /// Executes a Uniswap V3‑style swap against the in‑memory pool
+    /// state using the provided `SwapParams`, returning signed token
+    /// deltas and total fees charged.
+    ///
+    /// In `onchain` builds, you typically call the async helpers on
+    /// `V3Pool` to populate state from a live pool, then run `swap`
+    /// locally to simulate or quote a trade.
     pub fn swap(&self, params: SwapParams) -> Result<SwapResult, Error> {
         let amount_specified = params.amount_specified;
         if amount_specified.is_zero() {
@@ -138,9 +150,10 @@ impl<P: Provider + Send + Sync + 'static> V3Pool<P> {
         while (state.amount_specified_remaining != I256::ZERO)
             && (state.sqrt_price_x96 != sqrt_price_limit_x96)
         {
-            let mut step: StepComputations = StepComputations::default();
-
-            step.sqrt_price_start_x96 = state.sqrt_price_x96;
+            let mut step = StepComputations {
+                sqrt_price_start_x96: state.sqrt_price_x96,
+                ..StepComputations::default()
+            };
 
             (step.tick_next, step.initialized) = next_initialized_tick_within_one_word(
                 &self.bitmap,
@@ -149,11 +162,7 @@ impl<P: Provider + Send + Sync + 'static> V3Pool<P> {
                 zero_for_one,
             )?;
 
-            if step.tick_next < MIN_TICK {
-                step.tick_next = MIN_TICK;
-            } else if step.tick_next > MAX_TICK {
-                step.tick_next = MAX_TICK;
-            }
+            step.tick_next = step.tick_next.clamp(MIN_TICK, MAX_TICK);
 
             step.sqrt_price_next_x96 = get_sqrt_ratio_at_tick(step.tick_next)?;
 
@@ -196,35 +205,14 @@ impl<P: Provider + Send + Sync + 'static> V3Pool<P> {
 
             if state.sqrt_price_x96 == step.sqrt_price_next_x96 {
                 if step.initialized {
-                    if let Some(liquidity_net) = self.get_liquidity_net(&step.tick_next) {
+                    if let Some(mut liquidity_net) = self.get_liquidity_net(&step.tick_next) {
                         if zero_for_one {
-                            if liquidity_net >= 0 {
-                                state.liquidity = state
-                                    .liquidity
-                                    .checked_sub(liquidity_net as u128)
-                                    .ok_or(SwapError::LiquidityIsZero)?;
-                            } else {
-                                state.liquidity = state
-                                    .liquidity
-                                    .checked_add((-liquidity_net) as u128)
-                                    .ok_or(SwapError::LiquidityIsZero)?;
-                            }
-                        } else if liquidity_net >= 0 {
-                            state.liquidity = state
-                                .liquidity
-                                .checked_add(liquidity_net as u128)
-                                .ok_or(SwapError::LiquidityIsZero)?;
-                        } else {
-                            state.liquidity = state
-                                .liquidity
-                                .checked_sub((-liquidity_net) as u128)
-                                .ok_or(SwapError::LiquidityIsZero)?;
+                            liquidity_net = -liquidity_net;
                         }
+                        state.liquidity = add_delta(state.liquidity, liquidity_net)?;
                     } else {
                         return Err(Error::SwapError(SwapError::LiquidityIsZero));
                     }
-
-                    // TODO: Need to think, if I need to write something there
                 }
                 state.tick = if zero_for_one {
                     step.tick_next - 1
@@ -256,17 +244,19 @@ impl<P: Provider + Send + Sync + 'static> V3Pool<P> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "onchain"))]
 mod tests {
     use super::*;
+    use crate::FastMap;
+    use crate::V3Pool;
     use alloy_primitives::address;
-    use rustc_hash::FxHashMap;
+    use alloy_provider::Provider;
     use std::str::FromStr;
     use std::sync::Arc;
 
-    use crate::v3_pool::TickInfo;
-    use alloy::network::Ethereum;
-    use alloy::providers::RootProvider;
+    use crate::pool::v3_pool::TickInfo;
+    use alloy_provider::RootProvider;
+    use alloy_provider::network::Ethereum;
     // ---------------- Dummy Provider for tests ----------------
 
     #[derive(Clone)]
@@ -287,7 +277,7 @@ mod tests {
         tick: i32,
         liquidity: u128,
         fee_pips: u32,
-        bitmap: FxHashMap<i16, U256>,
+        bitmap: FastMap<i16, U256>,
     ) -> TestPool {
         let provider = Arc::new(DummyProvider);
 
@@ -308,8 +298,8 @@ mod tests {
         pool
     }
 
-    fn default_bitmap() -> FxHashMap<i16, U256> {
-        FxHashMap::default()
+    fn default_bitmap() -> FastMap<i16, U256> {
+        FastMap::default()
     }
 
     // ---------------- Basic validation tests ----------------
@@ -420,7 +410,7 @@ mod tests {
     #[test]
     fn swap_exact_input_one_for_zero_has_expected_signs() {
         let sqrt_price = get_sqrt_ratio_at_tick(0).unwrap();
-        let mut bitmap = FxHashMap::default();
+        let mut bitmap = FastMap::default();
         bitmap.insert(0_i16, U256::from(1u8));
 
         let pool = make_basic_pool(sqrt_price, 0, 1_000_000u128, 3000, bitmap);
@@ -453,7 +443,6 @@ mod tests {
     fn build_pool_for_js_case() -> TestPool {
         let provider = Arc::new(DummyProvider);
 
-        // Addresses from the JS run
         let pool_address = address!("0xBfd25092d6d5396CfA88d867c0cC73B7603b4aD8");
         let token0 = address!("0x420698CFdEDdEa6bc78D59bC17798113ad278F9D");
         let token1 = address!("0xC02aaA39b223FE8D0A0e5C4F27eAd9083C756Cc2");
@@ -468,7 +457,7 @@ mod tests {
 
         pool.tick_spacing = 60;
 
-        let mut bitmap: FxHashMap<i16, U256> = FxHashMap::default();
+        let mut bitmap: FastMap<i16, U256> = FastMap::default();
         bitmap.insert(
             -15_i16,
             U256::from_str("39614081257132168796771975168").unwrap(),
@@ -478,7 +467,7 @@ mod tests {
             U256::from_str("50216813883093446110686315385661331328818843555712276103168").unwrap(),
         );
 
-        let mut ticks: FxHashMap<i32, TickInfo> = FxHashMap::default();
+        let mut ticks: FastMap<i32, TickInfo> = FastMap::default();
 
         ticks.insert(
             -224700,
@@ -505,15 +494,11 @@ mod tests {
 
     #[test]
     fn swap_matches_js_single_case() {
-        // Arrange: pool in the same state as the JS simulation
         let pool = build_pool_for_js_case();
 
-        // JS run parameters (off-chain simulation)
         let zero_for_one = false; // Direction: false
         let amount_specified = I256::from_raw(U256::from(1_098_120u64));
 
-        // JS computed sqrtPriceLimitX96 using a 0.5% slippage, zeroForOne = false.
-        // We recompute it here in Rust to mirror that logic:
         let slippage_bps = 0.5; // 0.5% = 50 bps
         let sqrt_price_start = pool.slot0.sqrt_price_x96;
         let sqrt_price_limit_x96 =
@@ -528,33 +513,16 @@ mod tests {
         // Act
         let result = pool.swap(params).expect("swap should succeed");
 
-        // JS output snapshot:
-        // {
-        // amountOut: 6222896066140743n,
-        // amountUsed: 1098120n,
-        // newSqrtPriceX96: 1055080413701515132449498n
-        // }
-        // For zeroForOne == false and exact input, the pool receives token1
-        // and sends token0, so the token1 delta should be >= 0 and
-        // correspond to the JS amountOut.
-
         let expected_amount_out = I256::from_raw(-U256::from(6222896066140743u64));
         let expected_amount_used = I256::from_raw(U256::from(1098120));
 
         assert_eq!(
             result.amount0_delta, expected_amount_out,
-            "Rust swap amount1_out does not match JS amountOut"
+            "Rust swap amount0_out does not match expected amountOut"
         );
         assert_eq!(
             result.amount1_delta, expected_amount_used,
-            "Rust swap amount1_out does not match JS amountOut"
+            "Rust swap amount1_out does not match expected amountUsed"
         );
-
-        // The Rust implementation accumulates fees separately; in the JS log
-        // we only have `amountUsed`, which is the total input consumed.
-        // We can at least assert that the total effective input (amount_used)
-        // is consistent: amount_used = amount_specified - remaining.
-        // In the Rust swap, that is encoded in amount0/amount1 deltas, but for
-        // this test we primarily care about the output side equality.
     }
 }

@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: cargo fmt
+        run: cargo fmt --all -- --check
+
+  lint:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: cargo clippy (default features)
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+  test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        features:
+          - ""
+          - "onchain"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: cargo build
+        run: |
+          if [ -z "${{ matrix.features }}" ]; then
+            cargo build --all-targets
+          else
+            cargo build --all-targets --features "${{ matrix.features }}"
+          fi
+
+      - name: cargo test
+        run: |
+          if [ -z "${{ matrix.features }}" ]; then
+            cargo test --all-targets
+          else
+            cargo test --all-targets --features "${{ matrix.features }}"
+          fi
+

@@ -1,14 +1,22 @@
+use crate::FastMap;
+#[cfg(feature = "onchain")]
 use crate::error::OnchainError;
-use crate::swap::Slot0;
-use crate::tick_math::{MAX_TICK, MIN_TICK};
-use alloy::providers::Provider;
-use alloy::sol;
+use crate::math::tick_math::{MAX_TICK, MIN_TICK};
+use crate::pool::swap::Slot0;
+#[cfg(feature = "onchain")]
+use alloy_primitives::BlockNumber;
+#[cfg(feature = "onchain")]
 use alloy_primitives::aliases::I24;
-use alloy_primitives::{Address, BlockNumber, U160, U256};
-use futures::try_join;
-use rustc_hash::FxHashMap;
+use alloy_primitives::{Address, U160, U256};
+use std::marker::PhantomData;
 use std::sync::Arc;
 
+#[cfg(feature = "onchain")]
+use alloy_provider::Provider;
+#[cfg(feature = "onchain")]
+use alloy_sol_macro::sol;
+
+#[cfg(feature = "onchain")]
 sol! {
     #[sol(rpc)]
     interface IV3Pool {
@@ -35,6 +43,7 @@ sol! {
     }
 }
 
+#[cfg(feature = "onchain")]
 sol! {
     struct Call {
         address target;
@@ -59,10 +68,18 @@ pub struct TickInfo {
     pub liquidity_net: i128,
 }
 
+/// Converts an `Address` into its `U160` numeric representation.
+///
+/// This is mainly used to compare or sort addresses by value.
+#[inline(always)]
 pub fn address_to_u160(address: Address) -> U160 {
     address.into()
 }
 
+/// Returns the token pair sorted by numeric address, as used by Uniswap V3.
+///
+/// This is helpful when you want a canonical `(token0, token1)` ordering
+/// regardless of input order.
 pub fn sort_tokens(token0: Address, token1: Address) -> (Address, Address) {
     if address_to_u160(token0) < address_to_u160(token1) {
         (token0, token1)
@@ -71,6 +88,11 @@ pub fn sort_tokens(token0: Address, token1: Address) -> (Address, Address) {
     }
 }
 
+/// Computes the inclusive range of bitmap word indices that should be
+/// scanned for initialized ticks around a current tick and spacing.
+///
+/// Use this before calling bitmap fetch APIs to limit on‑chain calls
+/// to the relevant words for a given swap direction.
 pub fn generate_search_range(current_tick: i32, tick_spacing: i32, zero_for_one: bool) -> Vec<i16> {
     let min_word: i16;
     let max_word: i16;
@@ -103,7 +125,7 @@ pub fn generate_search_range(current_tick: i32, tick_spacing: i32, zero_for_one:
 }
 
 #[derive(Clone, Debug)]
-pub struct V3Pool<P: Provider> {
+pub struct V3Pool<P> {
     pub pool_address: Address,
     pub token0: Address,
     pub token1: Address,
@@ -111,24 +133,37 @@ pub struct V3Pool<P: Provider> {
     pub slot0: Slot0,
     pub liquidity: u128,
     pub tick_spacing: i32,
-    pub bitmap: FxHashMap<i16, U256>,
-    pub ticks: FxHashMap<i32, TickInfo>,
+    pub bitmap: FastMap<i16, U256>,
+    pub ticks: FastMap<i32, TickInfo>,
+    _marker: PhantomData<P>,
+    #[cfg(feature = "onchain")]
     pub contract: IV3Pool::IV3PoolInstance<OnchainProvider<P>>,
+    #[cfg(feature = "onchain")]
     pub multicall: IMulticall::IMulticallInstance<OnchainProvider<P>>,
-    provider: OnchainProvider<P>,
+    // #[cfg(feature = "onchain")]
+    // provider: OnchainProvider<P>,
 }
 
-impl<P: Provider + Send + Sync + 'static> V3Pool<P> {
-    pub fn new(
-        pool_address: Address,
-        token0: Address,
-        token1: Address,
-        fee_pips: u32,
-        provider: OnchainProvider<P>,
-    ) -> Self {
+impl<P> V3Pool<P> {
+    /// Returns the net liquidity delta at a given tick, if it exists.
+    ///
+    /// This is used during swaps to update in‑range liquidity when
+    /// crossing initialized ticks.
+    pub fn get_liquidity_net(&self, tick: &i32) -> Option<i128> {
+        self.ticks
+            .get(tick)
+            .map(|tick_info| tick_info.liquidity_net)
+    }
+
+    #[cfg(not(feature = "onchain"))]
+    /// Constructs an in‑memory pool for pure math / simulation use,
+    /// without attaching any on‑chain provider or contracts.
+    ///
+    /// You are expected to manually populate `slot0`, `liquidity`,
+    /// `tick_spacing`, `bitmap`, and `ticks` as needed.
+    pub fn new(pool_address: Address, token0: Address, token1: Address, fee_pips: u32) -> Self {
         let (token0, token1) = sort_tokens(token0, token1);
-        let contract = IV3Pool::IV3PoolInstance::new(pool_address, provider.clone());
-        let multicall = IMulticall::IMulticallInstance::new(pool_address, provider.clone());
+
         Self {
             pool_address,
             token0,
@@ -137,14 +172,54 @@ impl<P: Provider + Send + Sync + 'static> V3Pool<P> {
             slot0: Slot0::default(),
             liquidity: 0u128,
             tick_spacing: 0i32,
-            bitmap: FxHashMap::default(),
-            ticks: FxHashMap::default(),
+            bitmap: FastMap::default(),
+            ticks: FastMap::default(),
+            _marker: PhantomData,
+        }
+    }
+}
+
+#[cfg(feature = "onchain")]
+impl<P> V3Pool<P>
+where
+    P: Provider + Send + Sync + 'static,
+{
+    /// Constructs a pool bound to an on‑chain provider and generated
+    /// contract bindings, enabling all async fetch/update helpers.
+    ///
+    /// Use this when you want to read actual Uniswap V3 pool state
+    /// via JSON‑RPC and then run the math locally.
+    pub fn new(
+        pool_address: Address,
+        token0: Address,
+        token1: Address,
+        fee_pips: u32,
+        provider: OnchainProvider<P>,
+    ) -> Self {
+        let (token0, token1) = sort_tokens(token0, token1);
+
+        let contract = IV3Pool::IV3PoolInstance::new(pool_address, provider.clone());
+        let multicall = IMulticall::IMulticallInstance::new(pool_address, provider.clone());
+
+        Self {
+            pool_address,
+            token0,
+            token1,
+            fee_pips,
+            slot0: Slot0::default(),
+            liquidity: 0u128,
+            tick_spacing: 0i32,
+            bitmap: FastMap::default(),
+            ticks: FastMap::default(),
+            _marker: PhantomData,
             contract,
             multicall,
-            provider,
+            // provider,
         }
     }
 
+    /// Reads the `tickSpacing` from the on‑chain pool contract
+    /// at the given optional block number.
     pub async fn fetch_tick_spacing(
         &self,
         block_number: Option<BlockNumber>,
@@ -162,6 +237,9 @@ impl<P: Provider + Send + Sync + 'static> V3Pool<P> {
 
         Ok(tick_spacing.as_i32())
     }
+
+    /// Fetches `tickSpacing` on‑chain and stores it on this pool
+    /// instance, returning the updated value.
     pub async fn update_tick_spacing(
         &mut self,
         block_number: Option<BlockNumber>,
@@ -171,6 +249,8 @@ impl<P: Provider + Send + Sync + 'static> V3Pool<P> {
         Ok(self.tick_spacing)
     }
 
+    /// Fetches the Uniswap V3 `slot0` struct (sqrt price and tick)
+    /// from the on‑chain pool contract.
     pub async fn fetch_slot0(
         &self,
         block_number: Option<BlockNumber>,
@@ -192,6 +272,8 @@ impl<P: Provider + Send + Sync + 'static> V3Pool<P> {
         })
     }
 
+    /// Fetches `slot0` on‑chain and stores it on this pool instance,
+    /// returning the updated `Slot0`.
     pub async fn update_slot0(
         &mut self,
         block_number: Option<BlockNumber>,
@@ -200,6 +282,8 @@ impl<P: Provider + Send + Sync + 'static> V3Pool<P> {
         Ok(self.slot0)
     }
 
+    /// Fetches the current pool liquidity from the on‑chain contract
+    /// at the given optional block number.
     pub async fn fetch_liquidity(
         &self,
         block_number: Option<BlockNumber>,
@@ -217,6 +301,8 @@ impl<P: Provider + Send + Sync + 'static> V3Pool<P> {
         Ok(liquidity)
     }
 
+    /// Fetches liquidity on‑chain, stores it on this pool instance,
+    /// and returns the updated value.
     pub async fn get_liquidity(
         &mut self,
         block_number: Option<BlockNumber>,
@@ -230,20 +316,22 @@ impl<P: Provider + Send + Sync + 'static> V3Pool<P> {
         self.get_liquidity(None).await
     }
 
+    /// Fetches `slot0` at the latest block and updates this pool.
     pub async fn update_slot0_latest(&mut self) -> Result<Slot0, OnchainError> {
         self.update_slot0(None).await
     }
 
+    /// Fetches `tickSpacing` at the latest block and updates this pool.
     pub async fn update_tick_spacing_latest(&mut self) -> Result<i32, OnchainError> {
         self.update_tick_spacing(None).await
     }
 
+    /// Convenience helper that fetches liquidity, `slot0`, and
+    /// `tickSpacing` at the latest block and updates this pool.
     pub async fn refresh_latest(&mut self) -> Result<(), OnchainError> {
-        let (liq, slot0, spacing) = try_join!(
-            self.fetch_liquidity(None),
-            self.fetch_slot0(None),
-            self.fetch_tick_spacing(None),
-        )?;
+        let liq = self.fetch_liquidity(None).await?;
+        let slot0 = self.fetch_slot0(None).await?;
+        let spacing = self.fetch_tick_spacing(None).await?;
 
         self.liquidity = liq;
         self.slot0 = slot0;
@@ -252,12 +340,12 @@ impl<P: Provider + Send + Sync + 'static> V3Pool<P> {
         Ok(())
     }
 
+    /// Same as `refresh_latest`, but allows specifying a historical
+    /// block number to read pool state from the past.
     pub async fn refresh(&mut self, block_number: Option<BlockNumber>) -> Result<(), OnchainError> {
-        let (liq, slot0, spacing) = try_join!(
-            self.fetch_liquidity(block_number),
-            self.fetch_slot0(block_number),
-            self.fetch_tick_spacing(block_number),
-        )?;
+        let liq = self.fetch_liquidity(block_number).await?;
+        let slot0 = self.fetch_slot0(block_number).await?;
+        let spacing = self.fetch_tick_spacing(block_number).await?;
 
         self.liquidity = liq;
         self.slot0 = slot0;
@@ -266,12 +354,16 @@ impl<P: Provider + Send + Sync + 'static> V3Pool<P> {
         Ok(())
     }
 
+    /// Uses a multicall contract to fetch tick bitmap words for the
+    /// given word positions, optionally at a specific block number.
+    ///
+    /// Returns a sparse map from word index to non‑zero bitmap.
     pub async fn fetch_batch_bitmaps(
         &self,
         word_positions: &[i16],
         block_number: Option<BlockNumber>,
-    ) -> Result<FxHashMap<i16, U256>, OnchainError> {
-        let mut bitmap_calls: Vec<Call> = Vec::new();
+    ) -> Result<FastMap<i16, U256>, OnchainError> {
+        let mut bitmap_calls: Vec<Call> = Vec::with_capacity(word_positions.len());
 
         for wp in word_positions {
             let call_data = self.contract.tickBitmap(*wp).calldata().to_owned();
@@ -291,7 +383,7 @@ impl<P: Provider + Send + Sync + 'static> V3Pool<P> {
             .await
             .map_err(|e| OnchainError::FailedToCallMulticall(e.to_string()))?;
 
-        let mut bitmaps: FxHashMap<i16, U256> = FxHashMap::default();
+        let mut bitmaps: FastMap<i16, U256> = FastMap::with_capacity(word_positions.len());
 
         for (i, raw) in bitmap_data.returnData.into_iter().enumerate() {
             let decoded = self
@@ -310,15 +402,20 @@ impl<P: Provider + Send + Sync + 'static> V3Pool<P> {
         Ok(bitmaps)
     }
 
+    /// For each non‑zero bitmap word, decodes per‑tick liquidity from
+    /// the on‑chain pool contract using a batched multicall.
+    ///
+    /// Returns a map from tick index to `TickInfo`.
     pub async fn fetch_ticks_for_bitmaps(
         &self,
         word_positions: &[i16],
-        bitmaps: &FxHashMap<i16, U256>,
+        bitmaps: &FastMap<i16, U256>,
         block_number: Option<BlockNumber>,
-    ) -> Result<FxHashMap<i32, TickInfo>, OnchainError> {
-        let mut tick_calls: Vec<Call> = Vec::new();
-        let mut tick_indices: Vec<i32> = Vec::new();
-        let mut tick_word_positions: Vec<i16> = Vec::new();
+    ) -> Result<FastMap<i32, TickInfo>, OnchainError> {
+        let hint = word_positions.len().saturating_mul(6);
+        let mut tick_calls: Vec<Call> = Vec::with_capacity(hint);
+        let mut tick_indices: Vec<i32> = Vec::with_capacity(hint);
+        let mut tick_word_positions: Vec<i16> = Vec::with_capacity(hint);
 
         for &wp in word_positions {
             if let Some(bitmap) = bitmaps.get(&wp) {
@@ -349,7 +446,7 @@ impl<P: Provider + Send + Sync + 'static> V3Pool<P> {
 
         // nothing initialized – early exit
         if tick_calls.is_empty() {
-            return Ok(FxHashMap::default());
+            return Ok(FastMap::default());
         }
 
         let mut agg = self.multicall.aggregate(tick_calls);
@@ -363,13 +460,12 @@ impl<P: Provider + Send + Sync + 'static> V3Pool<P> {
             .await
             .map_err(|e| OnchainError::FailedToCallMulticall(e.to_string()))?;
 
-        let mut ticks: FxHashMap<i32, TickInfo> = FxHashMap::default();
+        let mut ticks: FastMap<i32, TickInfo> = FastMap::with_capacity(tick_indices.len());
 
         for (i, raw) in return_data.returnData.into_iter().enumerate() {
             let tick_index = tick_indices[i];
             let wp = tick_word_positions[i];
 
-            // Assuming: ticks(int24) returns (u128 liquidityGross, i128 liquidityNet, ...)
             let decoded = self
                 .contract
                 .ticks(I24::try_from(tick_index).unwrap())
@@ -394,11 +490,13 @@ impl<P: Provider + Send + Sync + 'static> V3Pool<P> {
         Ok(ticks)
     }
 
+    /// Convenience wrapper that fetches both bitmaps and ticks for the
+    /// given word positions in a single high‑level call.
     pub async fn fetch_bitmaps_and_ticks(
         &self,
         word_positions: &[i16],
         block_number: Option<BlockNumber>,
-    ) -> Result<(FxHashMap<i16, U256>, FxHashMap<i32, TickInfo>), OnchainError> {
+    ) -> Result<(FastMap<i16, U256>, FastMap<i32, TickInfo>), OnchainError> {
         // 1) fetch bitmaps
         let bitmaps = self
             .fetch_batch_bitmaps(word_positions, block_number)
@@ -412,6 +510,8 @@ impl<P: Provider + Send + Sync + 'static> V3Pool<P> {
         Ok((bitmaps, ticks))
     }
 
+    /// Fetches and stores bitmaps and ticks for the given word
+    /// positions, optionally at a specific block.
     pub async fn update_bitmaps_and_ticks(
         &mut self,
         word_positions: &[i16],
@@ -427,6 +527,8 @@ impl<P: Provider + Send + Sync + 'static> V3Pool<P> {
         Ok(())
     }
 
+    /// Fetches and stores bitmaps and ticks for the given word
+    /// positions at the latest block.
     pub async fn update_bitmaps_and_ticks_latest(
         &mut self,
         word_positions: &[i16],
@@ -438,18 +540,14 @@ impl<P: Provider + Send + Sync + 'static> V3Pool<P> {
 
         Ok(())
     }
-
-    pub fn get_liquidity_net(&self, tick: &i32) -> Option<i128> {
-        self.ticks.get(tick).map(|tick_info| tick_info.liquidity_net)
-    }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "onchain"))]
 mod tests {
     use super::*;
-    use alloy::providers::{Provider, ProviderBuilder};
-    use alloy::transports::mock::Asserter;
     use alloy_primitives::address;
+    use alloy_provider::transport::mock::Asserter;
+    use alloy_provider::{Provider, ProviderBuilder};
 
     // mock provider for tests
     pub fn mock_provider() -> Arc<impl Provider> {
@@ -534,6 +632,6 @@ mod tests {
         assert_eq!(pool.tick_spacing, 0);
         assert_eq!(pool.slot0.sqrt_price_x96, U256::ZERO);
         assert_eq!(pool.slot0.tick, 0);
-        assert_eq!(pool.bitmap, FxHashMap::default());
+        assert_eq!(pool.bitmap, FastMap::default());
     }
 }

@@ -44,6 +44,8 @@ pub enum SwapError {
     #[error("Swap error - liquidity is 0")]
     LiquidityIsZero,
 }
+
+#[cfg(feature = "onchain")]
 #[derive(Debug, Error)]
 pub enum OnchainError {
     #[error("Onchain error - failed to get tick spacing: {0}")]
@@ -76,6 +78,7 @@ pub enum Error {
     #[error(transparent)]
     SwapError(#[from] SwapError),
 
+    #[cfg(feature = "onchain")]
     #[error(transparent)]
     OnchainError(#[from] OnchainError),
 }

@@ -1,8 +1,13 @@
 use crate::error::MathError;
 
+/// Adjusts a `u128` liquidity value by a signed delta, returning
+/// an error if the operation would overflow or underflow.
+///
+/// This is typically used to apply liquidity changes while keeping
+/// the arithmetic safe and explicit about failure cases.
 pub fn add_delta(x: u128, y: i128) -> Result<u128, MathError> {
     if y < 0 {
-        let z = x.overflowing_sub(-y as u128);
+        let z = x.overflowing_sub((-y) as u128);
         if z.1 {
             return Err(MathError::Underflow);
         }

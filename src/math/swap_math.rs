@@ -1,12 +1,17 @@
 use crate::error::Error;
-use crate::math_helpers::mul_div_rounding_up;
-use crate::sqrt_price_math::{get_next_sqrt_price_from_input, get_next_sqrt_price_from_output};
-use crate::{
-    math_helpers::mul_div,
-    sqrt_price_math::{get_amount_0_delta_base, get_amount_1_delta_base},
+use crate::math::math_helpers::{mul_div, mul_div_rounding_up};
+use crate::math::sqrt_price_math::{get_amount_0_delta_base, get_amount_1_delta_base};
+use crate::math::sqrt_price_math::{
+    get_next_sqrt_price_from_input, get_next_sqrt_price_from_output,
 };
 use alloy_primitives::{I256, U256};
 
+/// Computes a single swap “step” between two sqrt prices given the
+/// current price, target price, in‑range liquidity, remaining amount,
+/// and fee, returning the next price, amount in/out, and fee paid.
+///
+/// This is the core building block for Uniswap V3 style swaps and is
+/// typically used inside a loop that walks initialized ticks.
 pub fn compute_swap_step(
     sqrt_ratio_current_x96: U256,
     sqrt_ratio_target_x96: U256,
@@ -136,10 +141,11 @@ pub fn compute_swap_step(
 
 #[cfg(test)]
 mod test {
-
     use crate::U256_1;
-    use crate::sqrt_price_math::{get_next_sqrt_price_from_input, get_next_sqrt_price_from_output};
-    use crate::swap_math::compute_swap_step;
+    use crate::math::sqrt_price_math::{
+        get_next_sqrt_price_from_input, get_next_sqrt_price_from_output,
+    };
+    use crate::math::swap_math::compute_swap_step;
     use alloy_primitives::{I256, U256};
     use std::str::FromStr;
 
