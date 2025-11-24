@@ -33,8 +33,8 @@ pub fn calculate_sqrt_price_limit(
 
 #[derive(Copy, Clone, Debug)]
 pub struct Slot0 {
-    pub(crate) sqrt_price_x96: U256,
-    pub(crate) tick: i32,
+    pub sqrt_price_x96: U256,
+    pub tick: i32,
 }
 
 impl Default for Slot0 {
@@ -48,9 +48,27 @@ impl Default for Slot0 {
 
 #[derive(Copy, Clone, Debug)]
 pub struct SwapParams {
-    zero_for_one: bool,
-    amount_specified: I256,
-    sqrt_price_limit_x96: U256,
+    /// Swap direction: `true` for token0 → token1, `false` for token1 → token0.
+    pub zero_for_one: bool,
+    /// Signed amount being swapped. Positive means “exact in”, negative means “exact out”.
+    pub amount_specified: I256,
+    /// Sqrt‑price limit in Q96 that bounds how far the price is allowed to move.
+    ///
+    /// Use [`calculate_sqrt_price_limit`] to derive this from a percentage slippage tolerance.
+    pub sqrt_price_limit_x96: U256,
+}
+
+impl SwapParams {
+    /// Creates new swap parameters for a given direction, signed amount,
+    /// and explicit sqrt‑price limit.
+    #[inline]
+    pub fn new(zero_for_one: bool, amount_specified: I256, sqrt_price_limit_x96: U256) -> Self {
+        Self {
+            zero_for_one,
+            amount_specified,
+            sqrt_price_limit_x96,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
