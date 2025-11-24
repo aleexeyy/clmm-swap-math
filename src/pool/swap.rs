@@ -1,13 +1,14 @@
-use crate::U256_10000;
 use crate::error::{Error, SwapError};
 use crate::math::liquidity_math::add_delta;
-use crate::math::math_helpers::unlikely;
+use crate::math::math_helpers::{mul_div, unlikely};
+use crate::math::sqrt_price_math::{get_amount_0_delta_base, get_amount_1_delta_base};
 use crate::math::swap_math::compute_swap_step;
 use crate::math::tick_bitmap::next_initialized_tick_within_one_word;
 use crate::math::tick_math::{
     MAX_SQRT_RATIO, MAX_TICK, MIN_SQRT_RATIO, MIN_TICK, get_sqrt_ratio_at_tick,
     get_tick_at_sqrt_ratio,
 };
+use crate::{U256_E4, U256_E6};
 use alloy_primitives::{I256, U256};
 use std::ops::{Add, Sub};
 
@@ -24,9 +25,9 @@ pub fn calculate_sqrt_price_limit(
     let slippage_bps = tolerance * 10_000.0;
 
     if zero_for_one {
-        (sqrt_price_x96 * U256::from(10000.0 - slippage_bps)) / U256_10000
+        (sqrt_price_x96 * U256::from(10000.0 - slippage_bps)) / U256_E4
     } else {
-        (sqrt_price_x96 * U256::from(10000.0 + slippage_bps)) / U256_10000
+        (sqrt_price_x96 * U256::from(10000.0 + slippage_bps)) / U256_E4
     }
 }
 
@@ -73,6 +74,19 @@ pub struct SwapState {
     liquidity: u128,
     // accumulated swap fees
     swap_fee: U256,
+}
+
+impl Default for SwapState {
+    fn default() -> Self {
+        Self {
+            amount_specified_remaining: I256::ZERO,
+            amount_calculated: I256::ZERO,
+            sqrt_price_x96: U256::ZERO,
+            tick: 0i32,
+            liquidity: 0u128,
+            swap_fee: U256::ZERO,
+        }
+    }
 }
 
 pub struct StepComputations {
@@ -245,26 +259,109 @@ impl<P> crate::pool::v3_pool::V3Pool<P> {
             fees_paid: state.swap_fee,
         })
     }
+
+    /// Returns the maximum input amount that can be swapped in the given
+    /// direction before the pool exhausts all usable liquidity or reaches
+    /// global tick bounds.
+    ///
+    /// This is useful for algorithms that require an upper bound on swap
+    /// size (e.g., binary search for optimal input).
+    ///
+    /// The value is denominated in the input token for the chosen direction
+    /// and includes the pool’s fee.
+    pub fn get_max_token_amount(&self, zero_for_one: bool) -> Result<U256, Error> {
+        let mut state = SwapState {
+            sqrt_price_x96: self.slot0.sqrt_price_x96,
+            tick: self.slot0.tick,
+            liquidity: self.liquidity,
+            ..Default::default()
+        };
+
+        let mut max_token_amount: U256 = U256::ZERO;
+
+        while state.tick > MIN_TICK && state.tick < MAX_TICK && state.liquidity != 0 {
+            let mut step = StepComputations {
+                sqrt_price_start_x96: state.sqrt_price_x96,
+                ..Default::default()
+            };
+
+            (step.tick_next, step.initialized) = next_initialized_tick_within_one_word(
+                &self.bitmap,
+                state.tick,
+                self.tick_spacing,
+                zero_for_one,
+            )?;
+
+            step.tick_next = step.tick_next.clamp(MIN_TICK, MAX_TICK);
+
+            step.sqrt_price_next_x96 = get_sqrt_ratio_at_tick(step.tick_next)?;
+
+            max_token_amount += if zero_for_one {
+                get_amount_0_delta_base(
+                    step.sqrt_price_next_x96,
+                    state.sqrt_price_x96,
+                    state.liquidity,
+                    true,
+                )?
+            } else {
+                get_amount_1_delta_base(
+                    state.sqrt_price_x96,
+                    step.sqrt_price_next_x96,
+                    state.liquidity,
+                    true,
+                )?
+            };
+
+            state.sqrt_price_x96 = step.sqrt_price_next_x96;
+
+            if step.initialized {
+                if let Some(mut liquidity_net) = self.get_liquidity_net(&step.tick_next) {
+                    if zero_for_one {
+                        liquidity_net = -liquidity_net;
+                    }
+                    state.liquidity = add_delta(state.liquidity, liquidity_net)?;
+                } else {
+                    return Err(Error::SwapError(SwapError::LiquidityIsZero));
+                }
+            }
+            state.tick = if zero_for_one {
+                step.tick_next - 1
+            } else {
+                step.tick_next
+            };
+        }
+        Ok(mul_div(
+            max_token_amount,
+            U256_E6,
+            U256::from(1000000u32 - self.fee_pips),
+        )
+        .unwrap_or(U256::MAX))
+    }
 }
 
-#[cfg(all(test, feature = "onchain"))]
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::FastMap;
     use crate::V3Pool;
     use alloy_primitives::address;
+    #[cfg(all(test, feature = "onchain"))]
     use alloy_provider::Provider;
     use std::str::FromStr;
+    #[cfg(all(test, feature = "onchain"))]
     use std::sync::Arc;
 
     use crate::pool::v3_pool::TickInfo;
+    #[cfg(all(test, feature = "onchain"))]
     use alloy_provider::RootProvider;
+    #[cfg(all(test, feature = "onchain"))]
     use alloy_provider::network::Ethereum;
     // ---------------- Dummy Provider for tests ----------------
 
+    #[cfg(all(test, feature = "onchain"))]
     #[derive(Clone)]
     struct DummyProvider;
-
+    #[cfg(all(test, feature = "onchain"))]
     impl Provider for DummyProvider {
         fn root(&self) -> &RootProvider<Ethereum> {
             // swap() never touches the provider in these tests.
@@ -272,9 +369,9 @@ mod tests {
             unimplemented!("DummyProvider::root should not be used in swap unit tests");
         }
     }
-
+    #[cfg(all(test, feature = "onchain"))]
     type TestPool = V3Pool<DummyProvider>;
-
+    #[cfg(all(test, feature = "onchain"))]
     fn make_basic_pool(
         sqrt_price_x96: U256,
         tick: i32,
@@ -296,6 +393,33 @@ mod tests {
         };
         pool.liquidity = liquidity;
         pool.tick_spacing = 1; // simplest spacing
+        pool.bitmap = bitmap;
+
+        pool
+    }
+    #[cfg(not(feature = "onchain"))]
+    type TestPool = V3Pool<()>;
+
+    #[cfg(not(feature = "onchain"))]
+    fn make_basic_pool(
+        sqrt_price_x96: U256,
+        tick: i32,
+        liquidity: u128,
+        fee_pips: u32,
+        bitmap: FastMap<i16, U256>,
+    ) -> TestPool {
+        let pool_address = address!("0x1000000000000000000000000000000000000000");
+        let token0 = address!("0x0000000000000000000000000000000000000001");
+        let token1 = address!("0x0000000000000000000000000000000000000002");
+
+        let mut pool = TestPool::new(pool_address, token0, token1, fee_pips);
+
+        pool.slot0 = Slot0 {
+            sqrt_price_x96,
+            tick,
+        };
+        pool.liquidity = liquidity;
+        pool.tick_spacing = 1;
         pool.bitmap = bitmap;
 
         pool
@@ -431,8 +555,6 @@ mod tests {
 
         let result = pool.swap(params).unwrap();
 
-        // one-for-zero, exact input: pool receives token1, sends token0.
-        // So amount1_delta >= 0, amount0_delta <= 0.
         assert!(result.amount1_delta >= I256::ZERO);
         assert!(result.amount0_delta <= I256::ZERO);
 
@@ -443,14 +565,8 @@ mod tests {
         assert!(result.fees_paid >= U256::ZERO);
     }
 
-    fn build_pool_for_js_case() -> TestPool {
-        let provider = Arc::new(DummyProvider);
-
-        let pool_address = address!("0xBfd25092d6d5396CfA88d867c0cC73B7603b4aD8");
-        let token0 = address!("0x420698CFdEDdEa6bc78D59bC17798113ad278F9D");
-        let token1 = address!("0xC02aaA39b223FE8D0A0e5C4F27eAd9083C756Cc2");
-
-        let mut pool = TestPool::new(pool_address, token0, token1, 3000, provider);
+    fn build_real_example_pool() -> TestPool {
+        let mut pool = make_basic_pool(U256::ZERO, 0, 0, 3000, FastMap::default());
 
         pool.slot0 = Slot0 {
             sqrt_price_x96: U256::from_str("1046706758115479018135889").unwrap(),
@@ -497,7 +613,7 @@ mod tests {
 
     #[test]
     fn swap_matches_js_single_case() {
-        let pool = build_pool_for_js_case();
+        let pool = build_real_example_pool();
 
         let zero_for_one = false; // Direction: false
         let amount_specified = I256::from_raw(U256::from(1_098_120u64));
@@ -521,11 +637,40 @@ mod tests {
 
         assert_eq!(
             result.amount0_delta, expected_amount_out,
-            "Rust swap amount0_out does not match expected amountOut"
+            "Swap amount0_out does not match expected amountOut"
         );
         assert_eq!(
             result.amount1_delta, expected_amount_used,
-            "Rust swap amount1_out does not match expected amountUsed"
+            "Swap amount1_out does not match expected amountUsed"
+        );
+    }
+
+    #[test]
+    fn max_token_amount_matches_full_swap_zero_for_one() {
+        // Build a realistic pool using your existing helper
+        let pool = build_real_example_pool();
+
+        // Choose direction: token1 -> token0 (like your existing test: zero_for_one = false)
+        let zero_for_one = false;
+
+        // 1) Ask the pool for the theoretical maximum token amount
+        let max_token_amount = pool
+            .get_max_token_amount(zero_for_one)
+            .expect("Failed to get max token amount");
+
+        let huge_input = I256::MAX;
+
+        let swap_result = pool
+            .swap(SwapParams {
+                zero_for_one,
+                amount_specified: huge_input,
+                sqrt_price_limit_x96: MAX_SQRT_RATIO.sub(U256::ONE),
+            })
+            .expect("Swap with huge input should succeed");
+
+        assert!(
+            U256::from(swap_result.amount1_delta).abs_diff(max_token_amount) <= U256::from(150u64),
+            "Full-range swap with effectively infinite input should consume exactly get_max_token_amount() tokens",
         );
     }
 }

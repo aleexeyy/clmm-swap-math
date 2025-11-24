@@ -1,3 +1,4 @@
+use crate::U256_E6;
 use crate::error::Error;
 use crate::math::math_helpers::{mul_div, mul_div_rounding_up};
 use crate::math::sqrt_price_math::{get_amount_0_delta_base, get_amount_1_delta_base};
@@ -29,7 +30,7 @@ pub fn compute_swap_step(
         let amount_remaining_less_fee = mul_div(
             amount_remaining.into_raw(),
             U256::from(1000000u32 - fee_pips),
-            U256::from(1000000u32),
+            U256_E6,
         )?;
         amount_in = if zero_for_one {
             get_amount_0_delta_base(

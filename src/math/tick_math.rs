@@ -1,7 +1,9 @@
 use crate::error::StateError;
 use crate::math::math_helpers::unlikely;
-use crate::{U256_127, U256_128};
 use alloy_primitives::{I256, U256};
+
+const U256_127: U256 = U256::from_limbs([127, 0, 0, 0]);
+const U256_128: U256 = U256::from_limbs([128, 0, 0, 0]);
 
 pub const MIN_TICK: i32 = -887272;
 pub const MAX_TICK: i32 = -MIN_TICK;
@@ -36,7 +38,6 @@ pub fn get_sqrt_ratio_at_tick(tick: i32) -> Result<U256, StateError> {
         return Err(StateError::TickOutOfBounds);
     }
 
-    // Start with ratio based on bit 0
     let mut ratio = if abs_tick & 1 != 0 {
         U256::from_limbs([12262481743371124737, 18445821805675392311, 0, 0])
     } else {

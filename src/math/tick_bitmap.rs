@@ -10,15 +10,15 @@ use std::ops::Shr;
 /// This is a low‑level helper that maps a tick index into the
 /// `(word, bit)` coordinates used by the Uniswap V3 tick bitmap.
 pub fn position(tick: i32) -> (i16, u8) {
-    (tick.shr(8) as i16, (tick % 256) as u8)
+    (tick.shr(8) as i16, (tick & 255) as u8)
 }
 
 /// Returns the bitmap word stored at `word`, or zero if absent.
 ///
 /// Callers use this to read a 256‑bit chunk of initialized ticks
 /// from a sparse bitmap map.
-pub fn get_word(bitmap: &FastMap<i16, U256>, word: i16) -> U256 {
-    *bitmap.get(&word).unwrap_or(&U256::ZERO)
+pub fn get_word(bitmap: &FastMap<i16, U256>, word: &i16) -> U256 {
+    *bitmap.get(word).unwrap_or(&U256::ZERO)
 }
 
 /// Toggles (flips) the initialized status of a tick in the bitmap.
@@ -62,7 +62,7 @@ pub fn next_initialized_tick_within_one_word(
         let (word_pos, bit_pos) = position(compressed);
 
         let mask: U256 = (U256_1 << bit_pos) - U256_1 + (U256_1 << bit_pos);
-        let masked: U256 = get_word(bitmap, word_pos) & mask;
+        let masked: U256 = get_word(bitmap, &word_pos) & mask;
 
         let initialized = !masked.is_zero();
 
@@ -77,7 +77,7 @@ pub fn next_initialized_tick_within_one_word(
 
         let mask: U256 = ((U256_1 << bit_pos) - U256_1).bitxor(U256::MAX);
 
-        let masked: U256 = get_word(bitmap, word_pos) & mask;
+        let masked: U256 = get_word(bitmap, &word_pos) & mask;
 
         let initialized = !masked.is_zero();
 
@@ -127,9 +127,9 @@ mod tests {
         let mut bm = FastMap::default();
         flip_tick(&mut bm, 78, 1).unwrap();
         let (word, bit) = position(78);
-        assert_eq!(get_word(&bm, word), U256_1 << bit);
+        assert_eq!(get_word(&bm, &word), U256_1 << bit);
         flip_tick(&mut bm, 78, 1).unwrap();
-        assert_eq!(get_word(&bm, word), U256::ZERO);
+        assert_eq!(get_word(&bm, &word), U256::ZERO);
     }
 
     // -----------------------------------------------------------------------------

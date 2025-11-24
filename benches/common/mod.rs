@@ -5,7 +5,7 @@ use clmm_swap_math::math::{
     bit_math, math_helpers, sqrt_price_math, swap_math, tick_bitmap, tick_math,
 };
 use clmm_swap_math::{FastMap, RESOLUTION};
-use criterion::{BenchmarkId, Criterion, Throughput, black_box};
+use criterion::{BenchmarkId, Criterion, Throughput};
 
 pub fn bench_tick_math(c: &mut Criterion) {
     let mut group = c.benchmark_group("tick_math");
@@ -13,16 +13,16 @@ pub fn bench_tick_math(c: &mut Criterion) {
     group.throughput(Throughput::Elements(1));
 
     group.bench_function(BenchmarkId::new("get_sqrt_ratio_at_tick", "0"), |b| {
-        b.iter(|| tick_math::get_sqrt_ratio_at_tick(black_box(0)).unwrap());
+        b.iter(|| tick_math::get_sqrt_ratio_at_tick(0).unwrap());
     });
 
     group.bench_function(BenchmarkId::new("get_sqrt_ratio_at_tick", "max"), |b| {
-        b.iter(|| tick_math::get_sqrt_ratio_at_tick(black_box(tick_math::MAX_TICK - 1)).unwrap());
+        b.iter(|| tick_math::get_sqrt_ratio_at_tick(tick_math::MAX_TICK - 1).unwrap());
     });
 
     let mid_ratio = tick_math::get_sqrt_ratio_at_tick(0).unwrap();
     group.bench_function("get_tick_at_sqrt_ratio", |b| {
-        b.iter(|| tick_math::get_tick_at_sqrt_ratio(black_box(mid_ratio)).unwrap());
+        b.iter(|| tick_math::get_tick_at_sqrt_ratio(mid_ratio).unwrap());
     });
 }
 
@@ -35,34 +35,24 @@ pub fn bench_sqrt_price_math(c: &mut Criterion) {
 
     group.bench_function("next_sqrt_price_from_input_zero_for_one", |b| {
         b.iter(|| {
-            sqrt_price_math::get_next_sqrt_price_from_input(
-                black_box(sqrt_price),
-                black_box(liquidity),
-                black_box(amount),
-                true,
-            )
-            .unwrap()
+            sqrt_price_math::get_next_sqrt_price_from_input(sqrt_price, liquidity, amount, true)
+                .unwrap()
         })
     });
 
     group.bench_function("next_sqrt_price_from_input_one_for_zero", |b| {
         b.iter(|| {
-            sqrt_price_math::get_next_sqrt_price_from_input(
-                black_box(sqrt_price),
-                black_box(liquidity),
-                black_box(amount),
-                false,
-            )
-            .unwrap()
+            sqrt_price_math::get_next_sqrt_price_from_input(sqrt_price, liquidity, amount, false)
+                .unwrap()
         })
     });
 
     group.bench_function("amount_0_delta_base", |b| {
         b.iter(|| {
             sqrt_price_math::get_amount_0_delta_base(
-                black_box(sqrt_price),
-                black_box(sqrt_price + U256::from(10_000u64)),
-                black_box(liquidity),
+                sqrt_price,
+                sqrt_price + U256::from(10_000u64),
+                liquidity,
                 true,
             )
             .unwrap()
@@ -72,9 +62,9 @@ pub fn bench_sqrt_price_math(c: &mut Criterion) {
     group.bench_function("amount_1_delta_base", |b| {
         b.iter(|| {
             sqrt_price_math::get_amount_1_delta_base(
-                black_box(sqrt_price),
-                black_box(sqrt_price + U256::from(10_000u64)),
-                black_box(liquidity),
+                sqrt_price,
+                sqrt_price + U256::from(10_000u64),
+                liquidity,
                 true,
             )
             .unwrap()
@@ -94,11 +84,11 @@ pub fn bench_swap_math(c: &mut Criterion) {
     group.bench_function("compute_swap_step_exact_in", |b| {
         b.iter(|| {
             swap_math::compute_swap_step(
-                black_box(sqrt_price),
-                black_box(sqrt_target),
-                black_box(liquidity),
-                black_box(amount_remaining),
-                black_box(fee_pips),
+                sqrt_price,
+                sqrt_target,
+                liquidity,
+                amount_remaining,
+                fee_pips,
             )
             .unwrap()
         })
@@ -107,14 +97,8 @@ pub fn bench_swap_math(c: &mut Criterion) {
     let amount_out = -amount_remaining;
     group.bench_function("compute_swap_step_exact_out", |b| {
         b.iter(|| {
-            swap_math::compute_swap_step(
-                black_box(sqrt_price),
-                black_box(sqrt_target),
-                black_box(liquidity),
-                black_box(amount_out),
-                black_box(fee_pips),
-            )
-            .unwrap()
+            swap_math::compute_swap_step(sqrt_price, sqrt_target, liquidity, amount_out, fee_pips)
+                .unwrap()
         })
     });
 }
@@ -129,13 +113,11 @@ pub fn bench_math_helpers(c: &mut Criterion) {
     let denom = U256::from(100u8);
 
     group.bench_function("mul_div", |bch| {
-        bch.iter(|| math_helpers::mul_div(black_box(a), black_box(b), black_box(denom)).unwrap())
+        bch.iter(|| math_helpers::mul_div(a, b, denom).unwrap())
     });
 
     group.bench_function("mul_div_rounding_up", |bch| {
-        bch.iter(|| {
-            math_helpers::mul_div_rounding_up(black_box(a), black_box(b), black_box(denom)).unwrap()
-        })
+        bch.iter(|| math_helpers::mul_div_rounding_up(a, b, denom).unwrap())
     });
 }
 
@@ -150,26 +132,12 @@ pub fn bench_tick_bitmap(c: &mut Criterion) {
 
     group.bench_function("next_initialized_tick_within_one_word_lte_false", |b| {
         b.iter(|| {
-            tick_bitmap::next_initialized_tick_within_one_word(
-                black_box(&bitmap),
-                black_box(78),
-                1,
-                false,
-            )
-            .unwrap()
+            tick_bitmap::next_initialized_tick_within_one_word(&bitmap, 78, 1, false).unwrap()
         })
     });
 
     group.bench_function("next_initialized_tick_within_one_word_lte_true", |b| {
-        b.iter(|| {
-            tick_bitmap::next_initialized_tick_within_one_word(
-                black_box(&bitmap),
-                black_box(78),
-                1,
-                true,
-            )
-            .unwrap()
-        })
+        b.iter(|| tick_bitmap::next_initialized_tick_within_one_word(&bitmap, 78, 1, true).unwrap())
     });
 }
 
@@ -179,11 +147,11 @@ pub fn bench_bit_math(c: &mut Criterion) {
     let x = U256::from(u128::MAX);
 
     group.bench_function("most_significant_bit", |b| {
-        b.iter(|| bit_math::most_significant_bit(black_box(x)).unwrap())
+        b.iter(|| bit_math::most_significant_bit(x).unwrap())
     });
 
     group.bench_function("least_significant_bit", |b| {
-        b.iter(|| bit_math::least_significant_bit(black_box(x)).unwrap())
+        b.iter(|| bit_math::least_significant_bit(x).unwrap())
     });
 }
 

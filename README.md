@@ -1,4 +1,4 @@
-# uniswap_v3_math
+# clmm-swap-math
 
 A small, focused Rust crate that implements the core Uniswap V3 pool math in a reusable, test‑driven way. It exposes:
 
