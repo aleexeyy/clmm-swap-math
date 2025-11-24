@@ -10,7 +10,7 @@ homepage = "https://github.com/aleexeyy/rust-uniswap-v3"
 repository = "https://github.com/aleexeyy/rust-uniswap-v3"
 keywords = ["uniswapv3", "math", "swap", "clmm", "defi"]
 categories = ["algorithms", "cryptography::cryptocurrencies"]
-exclude = ["target/*", ".github/*", ".gitignore"]
+exclude = ["target/*", ".github/*", ".gitignore", "benches"]
 
 [package.metadata.docs.rs]
 features = ["onchain", "std-hash"]

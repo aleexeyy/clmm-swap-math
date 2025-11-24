@@ -149,27 +149,3 @@ Compile with:
 ```bash
 cargo build --features onchain
 ```
-
-## Benchmarks
-
-Criterion benchmarks live under `benches/` and are registered in `Cargo.toml`. You can:
-
-- Run all math benchmarks (including v1 vs v2 tick comparison):
-
-```bash
-cargo bench --bench math_bench
-```
-
-- Or per‑module:
-
-```bash
-cargo bench --bench tick_math_bench
-cargo bench --bench sqrt_price_math_bench
-cargo bench --bench swap_math_bench
-cargo bench --bench math_helpers_bench
-cargo bench --bench tick_bitmap_bench
-cargo bench --bench bit_math_bench
-```
-
-These benches are intended to catch regressions in the core hot paths (`get_tick_at_sqrt_ratio`, `get_next_sqrt_price_from_input`, `compute_swap_step`, `mul_div`, etc.).
-
